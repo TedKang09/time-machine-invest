@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>타임머신 모의투자</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg:#ffffff;
+  --bg-tint:#f6f8fb;
+  --flap-bg-top:#1c222c;
+  --flap-bg-bot:#0d1016;
+  --amber:#f2a900;
+  --ink:#20242c;
+  --ink-dim:#8b93a1;
+  --line:#e3e7ee;
+  --blob-blue:#dcecf7;
+  --blob-green:#e2f3ea;
+  --blob-peach:#fbead0;
+  --gain:#2f9e64;
+  --loss:#d6484f;
+  --rs-up:#e5484d;
+  --rs-down:#2f6fdb;
+}
+*{box-sizing:border-box;}
+html,body{
+  margin:0;padding:0;height:100%;
+  background: radial-gradient(ellipse at 50% 30%, var(--bg-tint) 0%, var(--bg) 60%);
+  color:var(--ink);
+  font-family:'IBM Plex Sans KR',sans-serif;
+  overflow:hidden;
+}
+.stage{
+  position:relative;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+
+/* --- decorative soft illustrations (persistent across screens) --- */
+.deco{ position:absolute; pointer-events:none; z-index:1; animation: floaty 7s ease-in-out infinite; }
+.deco.d2{ bottom:12%; left:9%; width:96px; animation-delay:.8s; }
+.deco.d4{ bottom:10%; right:8%; width:104px; animation-delay:1.2s; }
+@keyframes floaty{
+  0%,100%{ transform:translateY(0px); }
+  50%{ transform:translateY(-10px); }
+}
+@media(max-width:640px){
+  .deco{ opacity:.55; transform:scale(.72); }
+  .deco.d2{ left:3%; } .deco.d4{ right:3%; }
+}
+
+/* --- view switching --- */
+.view{
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:22px;
+  z-index:2;
+  width:100%;
+  max-width:520px;
+  transition:opacity .3s ease;
+}
+.view.active{ display:flex; }
+.view.leaving{ opacity:0; }
+
+/* eyebrow */
+.eyebrow{
+  font-family:'Space Mono',monospace;
+  font-size:12px;
+  letter-spacing:.32em;
+  color:var(--amber);
+  text-transform:uppercase;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay: .05s;
+  font-weight:700;
+}
+
+/* split-flap title */
+.board{
+  display:flex;
+  flex-wrap:nowrap;
+  justify-content:center;
+  gap:6px;
+  max-width:100%;
+}
+.board .gap{ width:14px; }
+.flap{
+  position:relative;
+  width:clamp(26px, 8.2vw, 58px);
+  height:clamp(38px, 11vw, 78px);
+  background:linear-gradient(180deg, var(--flap-bg-top), var(--flap-bg-bot));
+  border-radius:6px;
+  box-shadow:
+    0 2px 0 rgba(0,0,0,.08),
+    0 14px 28px rgba(30,40,60,.14),
+    inset 0 0 0 1px #2c3340;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-weight:700;
+  font-size:clamp(20px, 5.4vw, 40px);
+  color:var(--amber);
+  transform-origin:center;
+  transform:rotateX(90deg);
+  opacity:0;
+  animation: flipIn .55s cubic-bezier(.2,.8,.3,1) forwards;
+}
+.flap::after{
+  content:'';
+  position:absolute;
+  left:0; right:0; top:50%;
+  height:1px;
+  background:rgba(0,0,0,.55);
+  box-shadow:0 1px 0 rgba(255,255,255,.03);
+}
+@keyframes flipIn{
+  0%{ transform:rotateX(90deg); opacity:0; }
+  60%{ transform:rotateX(-8deg); opacity:1; }
+  100%{ transform:rotateX(0deg); opacity:1; }
+}
+
+/* subtitle */
+.subtitle{
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:clamp(14px, 2.6vw, 16px);
+  font-weight:500;
+  letter-spacing:.1em;
+  color:var(--ink-dim);
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .7s ease forwards;
+  animation-delay: 1.35s;
+}
+.subtitle .pop{ color:var(--amber); font-weight:700; }
+
+@keyframes fadeUp{
+  from{ opacity:0; transform:translateY(10px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+/* CTA */
+.cta{
+  margin-top:14px;
+  padding:14px 34px;
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:14px;
+  font-weight:600;
+  letter-spacing:.02em;
+  color:#241a00;
+  background:var(--amber);
+  border:none;
+  border-radius:999px;
+  cursor:pointer;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay: 1.85s;
+  box-shadow:0 10px 24px rgba(242,169,0,.28);
+}
+.cta:hover:not(:disabled){ filter:brightness(1.05); }
+.cta:active:not(:disabled){ transform:translateY(1px); }
+.cta:disabled{ opacity:.35 !important; cursor:not-allowed; filter:none; }
+
+.hint{
+  font-family:'Space Mono',monospace;
+  font-size:10.5px;
+  letter-spacing:.1em;
+  color:var(--ink-dim);
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay: 2.15s;
+}
+
+/* --- nickname view specifics --- */
+.nick-heading{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.15s;
+}
+.nick-heading .line{
+  font-size:clamp(20px, 4.4vw, 28px);
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.4;
+}
+.nick-heading .pop{ color:var(--amber); }
+
+.nick-card{
+  width:100%;
+  background:#ffffff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:26px 24px;
+  box-shadow:0 18px 40px rgba(30,40,60,.08);
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.45s;
+}
+.nick-label{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  letter-spacing:.14em;
+  color:var(--ink-dim);
+  text-transform:uppercase;
+}
+.nick-input{
+  width:100%;
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:18px;
+  font-weight:600;
+  color:var(--ink);
+  border:none;
+  border-bottom:2px solid var(--line);
+  padding:10px 4px;
+  outline:none;
+  background:transparent;
+  transition:border-color .2s ease;
+}
+.nick-input:focus{ border-bottom-color:var(--amber); }
+.nick-input::placeholder{ color:#c3c8d1; font-weight:400; }
+.nick-counter{
+  align-self:flex-end;
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  color:var(--ink-dim);
+}
+
+.welcome{
+  text-align:center;
+  font-size:14px;
+  color:var(--ink-dim);
+  opacity:0;
+  min-height:20px;
+}
+.welcome.show{ animation: fadeUp .4s ease forwards; }
+.welcome b{ color:var(--amber); }
+
+/* --- time machine view --- */
+.tm-flyer-wrap{
+  position:absolute;
+  inset:0;
+  z-index:3;
+  pointer-events:none;
+  display:none;
+  overflow:hidden;
+}
+.tm-flyer-wrap.active{ display:block; }
+.tm-flyer{
+  position:absolute;
+  top:38%;
+  left:-20%;
+  width:150px;
+  transform:translateY(-50%);
+  opacity:0;
+}
+.tm-flyer.fly{
+  animation: flyAcross 3s cubic-bezier(.3,.6,.4,1) forwards;
+}
+@keyframes flyAcross{
+  0%{ left:-20%; opacity:0; }
+  8%{ opacity:1; }
+  85%{ opacity:1; }
+  100%{ left:120%; opacity:0; }
+}
+
+.tm-message{
+  text-align:center;
+  font-size:clamp(19px, 4.2vw, 25px);
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.6;
+  opacity:0;
+  transform:translateY(8px);
+  transition:opacity .5s ease, transform .5s ease;
+}
+.tm-message.show{ opacity:1; transform:translateY(0); }
+.tm-message .pop{ color:var(--amber); }
+
+.tm-box{
+  position:relative;
+  width:100%;
+  height:200px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* --- stock select view --- */
+#view-stockselect{ max-width:640px; gap:16px; }
+.ss-header{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.1s;
+}
+.ss-header .l1{
+  font-size:clamp(17px, 3.6vw, 21px);
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.55;
+}
+.ss-header .l2{
+  font-size:13px;
+  color:var(--ink-dim);
+  margin-top:4px;
+  line-height:1.6;
+}
+.ss-header .l2.warn{
+  color:#d6484f;
+  font-weight:700;
+  animation: blinkRed 1.1s ease-in-out infinite;
+}
+@keyframes blinkRed{
+  0%,100%{ opacity:1; }
+  50%{ opacity:.3; }
+}
+.ss-header .l3{
+  font-size:14px;
+  color:var(--ink);
+  font-weight:600;
+  margin-top:10px;
+}
+.ss-header .pop{ color:var(--amber); }
+
+.ss-counter{
+  font-family:'Space Mono',monospace;
+  font-size:13px;
+  font-weight:700;
+  color:var(--ink-dim);
+  background:var(--bg-tint);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:6px 16px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.2s;
+}
+.ss-counter b{ color:var(--amber); }
+
+.ss-groups{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.3s;
+}
+.ss-group-label{
+  font-family:'Space Mono',monospace;
+  font-size:11.5px;
+  font-weight:700;
+  letter-spacing:.12em;
+  color:var(--ink-dim);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.ss-group-label::after{
+  content:'';
+  flex:1;
+  height:1px;
+  background:var(--line);
+}
+.ss-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.chip{
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:13.5px;
+  font-weight:600;
+  color:var(--ink);
+  background:#ffffff;
+  border:1.5px solid var(--line);
+  border-radius:10px;
+  padding:9px 14px;
+  cursor:pointer;
+  transition:all .15s ease;
+  user-select:none;
+}
+.chip:hover{ border-color:#c7cdd8; }
+.chip.selected{
+  background:var(--amber);
+  border-color:var(--amber);
+  color:#241a00;
+}
+.chip.disabled{
+  opacity:.35;
+  cursor:not-allowed;
+  pointer-events:none;
+}
+.chip.unavailable{
+  opacity:.4;
+  cursor:not-allowed;
+  pointer-events:none;
+  background:var(--bg-tint);
+  border-style:dashed;
+}
+.chip-note{ font-size:11px; color:var(--ink-dim); font-weight:500; }
+
+.ss-cta{
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.35s;
+}
+
+/* --- allocate view --- */
+#view-allocate{ max-width:480px; gap:16px; }
+.alloc-heading{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.1s;
+}
+.alloc-heading .line{
+  font-size:clamp(18px, 3.8vw, 22px);
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.5;
+}
+.alloc-heading .pop{ color:var(--amber); }
+
+.alloc-card{
+  width:100%;
+  background:#ffffff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:22px 22px;
+  box-shadow:0 18px 40px rgba(30,40,60,.08);
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.2s;
+}
+.alloc-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  font-size:14.5px;
+  font-weight:600;
+  color:var(--ink);
+  padding-bottom:12px;
+  border-bottom:1px dashed var(--line);
+}
+.alloc-row:last-child{ border-bottom:none; padding-bottom:0; }
+.alloc-inputwrap{ display:flex; align-items:center; gap:6px; }
+.alloc-input{
+  width:74px;
+  text-align:right;
+  font-family:'Space Mono',monospace;
+  font-size:16px;
+  font-weight:700;
+  color:var(--ink);
+  border:none;
+  border-bottom:2px solid var(--line);
+  padding:6px 4px;
+  outline:none;
+  background:transparent;
+  transition:border-color .2s ease;
+}
+.alloc-input:focus{ border-bottom-color:var(--amber); }
+.alloc-unit{ color:var(--ink-dim); font-size:13px; }
+
+.alloc-balance{
+  font-family:'Space Mono',monospace;
+  font-size:15.5px;
+  font-weight:700;
+  color:var(--ink);
+  background:var(--bg-tint);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:10px 22px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.3s;
+  transition:color .2s ease, border-color .2s ease;
+}
+.alloc-balance.zero{ color:#2f9e64; border-color:#2f9e6455; background:#2f9e6412; }
+.alloc-balance.over{ color:#d6484f; border-color:#d6484f55; background:#d6484f12; }
+
+.alloc-warning{
+  color:#d6484f;
+  font-size:13px;
+  font-weight:700;
+  opacity:0;
+  min-height:18px;
+  transition:opacity .3s ease;
+}
+.alloc-warning.show{ opacity:1; animation: shakeX .4s ease; }
+@keyframes shakeX{
+  0%,100%{ transform:translateX(0); }
+  25%{ transform:translateX(-5px); }
+  75%{ transform:translateX(5px); }
+}
+
+.alloc-cta{
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.4s;
+}
+
+/* --- reveal view (경제환경/종목 요약) --- */
+#view-reveal{ max-width:560px; gap:14px; }
+.rv-heading{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.05s;
+}
+.rv-heading .line{
+  font-size:clamp(18px, 3.8vw, 22px);
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.5;
+}
+.rv-heading .pop{ color:var(--amber); }
+.rv-sub{
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:clamp(16px, 3.6vw, 19px);
+  font-weight:700;
+  letter-spacing:.02em;
+  color:#d6484f;
+  opacity:0;
+  animation: fadeUp .6s ease forwards, blinkRed 1.1s ease-in-out infinite;
+  animation-delay:.2s, .6s;
+}
+.rv-list{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:4px;
+  min-height:80px;
+  justify-content:center;
+}
+.rv-line{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  background:#ffffff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px 14px;
+  font-size:13.5px;
+  line-height:1.55;
+  color:var(--ink);
+  opacity:0;
+  transform:translateY(10px);
+  transition:opacity .5s ease, transform .5s ease;
+}
+.rv-line.show{ opacity:1; transform:translateY(0); }
+.rv-line .tagline{
+  flex:none;
+  font-family:'Space Mono',monospace;
+  font-size:10.5px;
+  font-weight:700;
+  color:var(--amber);
+  background:#fdf3d8;
+  border-radius:5px;
+  padding:3px 7px;
+  margin-top:1px;
+  white-space:nowrap;
+}
+.rv-cta{
+  margin-top:6px;
+  opacity:0;
+  transition:opacity .4s ease;
+}
+.rv-cta.show{ opacity:1; }
+
+/* --- result view (6페이지) --- */
+#view-result{ max-width:600px; gap:16px; }
+.rs-eyebrow{
+  font-family:'Space Mono',monospace;
+  font-size:11.5px;
+  letter-spacing:.16em;
+  color:var(--ink-dim);
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.05s;
+}
+.rs-headline{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.15s;
+}
+.rs-headline .rs-return{
+  font-family:'Space Mono',monospace;
+  font-size:clamp(38px, 9vw, 54px);
+  font-weight:700;
+  line-height:1.1;
+}
+.rs-headline .rs-return.up{ color:var(--rs-up); }
+.rs-headline .rs-return.down{ color:var(--rs-down); }
+.rs-headline .rs-balance{
+  font-family:'Space Mono',monospace;
+  font-size:15px;
+  color:var(--ink-dim);
+  margin-top:6px;
+}
+.rs-headline .rs-balance b{ color:var(--ink); font-weight:700; }
+.rs-assume{
+  font-size:11px;
+  color:var(--ink-dim);
+  margin-top:6px;
+}
+
+.rs-card{
+  width:100%;
+  background:#ffffff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:20px 22px;
+  box-shadow:0 18px 40px rgba(30,40,60,.08);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.3s;
+}
+.rs-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:13.5px;
+  padding-bottom:10px;
+  border-bottom:1px dashed var(--line);
+}
+.rs-row:last-child{ border-bottom:none; padding-bottom:0; }
+.rs-row .rs-name{ font-weight:700; color:var(--ink); min-width:96px; }
+.rs-row .rs-pct{
+  font-family:'Space Mono',monospace;
+  font-weight:700;
+  min-width:64px;
+  text-align:center;
+  padding:2px 8px;
+  border-radius:5px;
+}
+.rs-row .rs-pct.up{ color:var(--rs-up); background:#e5484d16; }
+.rs-row .rs-pct.down{ color:var(--rs-down); background:#2f6fdb16; }
+.rs-row .rs-amt{
+  font-family:'Space Mono',monospace;
+  color:var(--ink-dim);
+  font-size:12.5px;
+  margin-left:auto;
+  text-align:right;
+}
+
+.rs-bench{
+  width:100%;
+  background:var(--bg-tint);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:18px 20px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.4s;
+}
+.rs-bench-title{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  letter-spacing:.1em;
+  color:var(--ink-dim);
+  text-transform:uppercase;
+}
+.rs-bench-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  font-size:13.5px;
+  font-weight:600;
+  color:var(--ink);
+}
+.rs-bench-row.me{ font-weight:700; }
+.rs-bench-row .val{
+  font-family:'Space Mono',monospace;
+  font-weight:700;
+}
+.rs-bench-row .val.up{ color:var(--rs-up); }
+.rs-bench-row .val.down{ color:var(--rs-down); }
+.rs-verdict{
+  font-size:13px;
+  color:var(--ink);
+  font-weight:600;
+  text-align:center;
+  margin-top:4px;
+  padding-top:10px;
+  border-top:1px dashed var(--line);
+}
+.rs-verdict .pop{ color:var(--amber); }
+
+.rs-leaderboard-cta{
+  margin-top:4px;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.5s;
+}
+
+/* --- leaderboard view --- */
+#view-leaderboard{ max-width:520px; gap:14px; }
+.lb-heading{
+  text-align:center;
+  opacity:0;
+  animation: fadeUp .6s ease forwards;
+  animation-delay:.05s;
+}
+.lb-heading .line{
+  font-size:clamp(19px, 4vw, 23px);
+  font-weight:700;
+  color:var(--ink);
+}
+.lb-heading .pop{ color:var(--amber); }
+.lb-sub{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  color:var(--ink-dim);
+  letter-spacing:.06em;
+}
+.lb-card{
+  width:100%;
+  background:#ffffff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:10px 8px;
+  box-shadow:0 18px 40px rgba(30,40,60,.08);
+  display:flex;
+  flex-direction:column;
+}
+.lb-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:11px 12px;
+  border-bottom:1px dashed var(--line);
+}
+.lb-row:last-child{ border-bottom:none; }
+.lb-row.me{ background:#fdf3d8; border-radius:10px; }
+.lb-rank{
+  font-family:'Space Mono',monospace;
+  font-weight:700;
+  font-size:14px;
+  width:26px;
+  text-align:center;
+  color:var(--ink-dim);
+}
+.lb-rank.gold{ color:#e0a500; }
+.lb-rank.silver{ color:#9aa1ad; }
+.lb-rank.bronze{ color:#c07a3e; }
+.lb-name{
+  flex:1;
+  font-weight:700;
+  font-size:14px;
+  color:var(--ink);
+}
+.lb-pct{
+  font-family:'Space Mono',monospace;
+  font-weight:700;
+  font-size:14px;
+  min-width:64px;
+  text-align:right;
+}
+.lb-pct.up{ color:var(--rs-up); }
+.lb-pct.down{ color:var(--rs-down); }
+.lb-empty, .lb-loading{
+  text-align:center;
+  color:var(--ink-dim);
+  font-size:13px;
+  padding:24px 0;
+}
+.lb-refresh{
+  font-family:'IBM Plex Sans KR',sans-serif;
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--ink-dim);
+  background:var(--bg-tint);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:8px 18px;
+  cursor:pointer;
+}
+.lb-refresh:hover{ border-color:var(--amber); color:var(--amber); }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- 부드러운 배경 일러스트: 상승 차트(좌하) / 모래시계(우하, 시간여행 모티프) -->
+  <svg class="deco d2" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="48" fill="var(--blob-blue)"/>
+    <g transform="translate(22,30)" stroke="#5b8fb0" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M2 34L16 20L28 30L54 4"/>
+      <path d="M40 4H54V18"/>
+    </g>
+  </svg>
+
+  <svg class="deco d4" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="58" fill="var(--blob-peach)"/>
+    <g transform="translate(38,30)" stroke="#c98a1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M4 2H40 M4 58H40 M6 2C6 22 22 26 22 30C22 34 6 38 6 58 M38 2C38 22 22 26 22 30C22 34 38 38 38 58"/>
+    </g>
+  </svg>
+
+  <!-- 화면 1: 인트로 -->
+  <div class="view active" id="view-intro">
+    <p class="eyebrow">SIMULATION INVESTMENT</p>
+    <div class="board" id="board"></div>
+    <p class="subtitle"><span class="pop">실전</span>에 <span class="pop">사례</span>를 더하다</p>
+    <button class="cta" id="startBtn">시작하기 ▶</button>
+    <p class="hint">닉네임만 입력하면 바로 시작됩니다</p>
+  </div>
+
+  <!-- 화면 2: 닉네임 등록 -->
+  <div class="view" id="view-nickname">
+    <p class="eyebrow">PLAYER SETUP</p>
+    <div class="nick-heading">
+      <div class="line">모의투자를 시작하기 전,</div>
+      <div class="line"><span class="pop">닉네임</span>을 알려주세요</div>
+    </div>
+    <div class="nick-card">
+      <span class="nick-label">Nickname</span>
+      <input class="nick-input" id="nickInput" type="text" maxlength="8" placeholder="예) 개미투자자" autocomplete="off">
+      <span class="nick-counter"><span id="nickCount">0</span>/8</span>
+    </div>
+    <p class="welcome" id="welcomeMsg"></p>
+    <button class="cta" id="enterBtn" disabled>모의투자 시작하기 ▶</button>
+  </div>
+
+  <!-- 화면 3: 타임머신 이동 연출 -->
+  <div class="view" id="view-timemachine">
+    <p class="eyebrow">TIME MACHINE</p>
+    <div class="tm-box">
+      <div class="tm-flyer-wrap" id="tmWrap">
+        <div class="tm-flyer" id="tmFlyer">
+          <svg viewBox="0 0 150 90" xmlns="http://www.w3.org/2000/svg">
+            <g stroke="var(--amber)" stroke-width="3" stroke-linecap="round" opacity="0.55">
+              <line x1="0" y1="40" x2="26" y2="40"/>
+              <line x1="4" y1="52" x2="22" y2="52"/>
+              <line x1="6" y1="28" x2="20" y2="28"/>
+            </g>
+            <path d="M128 30 L146 18 L140 40 Z" fill="#1c222c"/>
+            <ellipse cx="90" cy="42" rx="46" ry="26" fill="#1c222c"/>
+            <circle cx="78" cy="40" r="16" fill="#ffffff" stroke="var(--amber)" stroke-width="2.4"/>
+            <g stroke="#20242c" stroke-width="2.4" stroke-linecap="round">
+              <line x1="78" y1="40" x2="78" y2="30"/>
+              <line x1="78" y1="40" x2="86" y2="44"/>
+            </g>
+            <circle cx="78" cy="40" r="1.8" fill="#20242c"/>
+            <g fill="var(--amber)">
+              <circle cx="60" cy="14" r="2.4"/>
+              <circle cx="100" cy="10" r="1.8"/>
+              <circle cx="118" cy="20" r="1.6"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <p class="tm-message" id="tmMessage"></p>
+    </div>
+  </div>
+
+  <!-- 화면 4: 종목 선택 -->
+  <div class="view" id="view-stockselect">
+    <div class="ss-header">
+      <div class="l1" id="ssL1"></div>
+      <div class="l2 warn">2024년 12월까지 6개월마다 리밸런싱(주식 변경)을 진행해요</div>
+      <div class="l3">아래 주식 종목 중 관심있는 것을 <span class="pop">4개</span> 골라주세요</div>
+    </div>
+
+    <div class="ss-counter">선택됨 <b id="ssCount">0</b>/4</div>
+
+    <div class="ss-groups">
+      <div>
+        <div class="ss-group-label">🇺🇸 미국</div>
+        <div class="ss-chips" data-group="us">
+          <button class="chip" data-stock="S&P500">S&amp;P500</button>
+          <button class="chip" data-stock="구글">구글</button>
+          <button class="chip" data-stock="맥도날드">맥도날드</button>
+          <button class="chip" data-stock="넷플릭스">넷플릭스</button>
+          <button class="chip" data-stock="씨티그룹">씨티그룹</button>
+          <button class="chip" data-stock="유나이티드 에어라인">유나이티드 에어라인</button>
+          <button class="chip" data-stock="월마트">월마트</button>
+          <button class="chip" data-stock="모더나">모더나</button>
+        </div>
+      </div>
+      <div>
+        <div class="ss-group-label">🇰🇷 한국</div>
+        <div class="ss-chips" data-group="kr">
+          <button class="chip" data-stock="KOSPI200">KOSPI200</button>
+          <button class="chip" data-stock="현대차">현대차</button>
+          <button class="chip" data-stock="삼성전자">삼성전자</button>
+          <button class="chip" data-stock="SK하이닉스">SK하이닉스</button>
+          <button class="chip" data-stock="국민은행">국민은행</button>
+          <button class="chip" data-stock="하나투어">하나투어</button>
+          <button class="chip" data-stock="씨젠">씨젠</button>
+          <button class="chip" data-stock="카카오">카카오</button>
+          <button class="chip" data-stock="대한항공">대한항공</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="cta ss-cta" id="ssNextBtn" disabled>다음 ▶</button>
+  </div>
+
+  <!-- 화면 5: 투자금 배분 -->
+  <div class="view" id="view-allocate">
+    <p class="eyebrow">ALLOCATE BUDGET</p>
+    <div class="alloc-heading">
+      <div class="line">고른 <span class="pop">4종목</span>에<br>투자금을 배분해주세요</div>
+    </div>
+
+    <div class="alloc-card" id="allocList"></div>
+
+    <div class="alloc-balance" id="allocBalanceWrap">투자금 잔액 <span id="allocBalance">1,000</span>만원</div>
+    <p class="alloc-warning" id="allocWarning">투자금을 전부 사용해 주세요</p>
+    <button class="cta alloc-cta" id="allocNextBtn">다음 ▶</button>
+  </div>
+
+  <!-- 화면 5.5: 경제환경/종목 요약 리빌 -->
+  <div class="view" id="view-reveal">
+    <div class="rv-heading">
+      <div class="line"><span id="rvName"></span>님의 투자는<br>6개월 후 <span class="pop">어떤 결과</span>가 있을까요?</div>
+    </div>
+    <p class="rv-sub">2020.01 → 2020.06 · 그 사이 있었던 일들</p>
+    <div class="rv-list" id="rvList"></div>
+    <button class="cta rv-cta" id="rvNextBtn">결과 확인하기 ▶</button>
+  </div>
+
+  <!-- 화면 6: 최종 결과 -->
+  <div class="view" id="view-result">
+    <p class="rs-eyebrow">2020.06.30 기준 · 최종 성과</p>
+    <div class="rs-headline">
+      <div class="rs-return" id="rsReturn">-</div>
+      <div class="rs-balance">투자 잔액 <b id="rsBalance">-</b></div>
+      <div class="rs-assume">2020년 1월 첫 영업일 시가에 매수했다고 가정한 결과예요</div>
+    </div>
+
+    <div class="rs-card" id="rsCard"></div>
+
+    <div class="rs-bench">
+      <div class="rs-bench-title">시장 수익률과 비교</div>
+      <div class="rs-bench-row me"><span id="rsMeLabel">내 포트폴리오</span><span class="val" id="rsMeVal">-</span></div>
+      <div class="rs-bench-row"><span>S&amp;P500 (미국 시장)</span><span class="val" id="rsSpxVal">-</span></div>
+      <div class="rs-bench-row"><span>KOSPI200 (한국 시장)</span><span class="val" id="rsKospiVal">-</span></div>
+      <div class="rs-verdict" id="rsVerdict"></div>
+    </div>
+
+    <button class="cta rs-leaderboard-cta" id="rsLeaderboardBtn">🏆 오늘의 TOP 10 보기</button>
+  </div>
+
+  <!-- 화면 7: 실시간 리더보드 -->
+  <div class="view" id="view-leaderboard">
+    <div class="lb-heading">
+      <div class="line">오늘의 <span class="pop">TOP 10</span></div>
+      <p class="lb-sub">전체 교육생 실시간 수익률 순위</p>
+    </div>
+
+    <div class="lb-card" id="lbCard">
+      <div class="lb-loading">불러오는 중...</div>
+    </div>
+
+    <button class="lb-refresh" id="lbRefreshBtn">↻ 새로고침</button>
+    <button class="cta" id="toRound2Btn">2차 라운드 시작하기 ▶</button>
+  </div>
+
+  <!-- 화면 8: 종목 선택 (2차, 2020.07 ~ 2021.12) -->
+  <div class="view" id="view-stockselect2">
+    <div class="ss-header">
+      <div class="l1" id="ss2L1"></div>
+      <div class="l2 warn">2021년 12월까지 종목을 그대로 들고가요, 리밸런싱은 이번 한 번뿐이에요</div>
+      <div class="l3">아래 주식 종목 중 관심있는 것을 <span class="pop">4개</span> 골라주세요</div>
+    </div>
+
+    <div class="ss-counter">선택됨 <b id="ss2Count">0</b>/4</div>
+
+    <div class="ss-groups">
+      <div>
+        <div class="ss-group-label">🇺🇸 미국</div>
+        <div class="ss-chips" data-group="us2">
+          <button class="chip chip2" data-stock="S&P500">S&amp;P500</button>
+          <button class="chip chip2" data-stock="구글">구글</button>
+          <button class="chip chip2" data-stock="맥도날드">맥도날드</button>
+          <button class="chip chip2" data-stock="넷플릭스">넷플릭스</button>
+          <button class="chip chip2" data-stock="씨티그룹">씨티그룹</button>
+          <button class="chip chip2" data-stock="유나이티드 에어라인">유나이티드 에어라인</button>
+          <button class="chip chip2" data-stock="월마트">월마트</button>
+          <button class="chip chip2" data-stock="모더나">모더나</button>
+        </div>
+      </div>
+      <div>
+        <div class="ss-group-label">🇰🇷 한국</div>
+        <div class="ss-chips" data-group="kr2">
+          <button class="chip chip2" data-stock="KOSPI200">KOSPI200</button>
+          <button class="chip chip2" data-stock="현대차">현대차</button>
+          <button class="chip chip2" data-stock="삼성전자">삼성전자</button>
+          <button class="chip chip2" data-stock="SK하이닉스">SK하이닉스</button>
+          <button class="chip chip2" data-stock="국민은행">국민은행</button>
+          <button class="chip chip2" data-stock="하나투어">하나투어</button>
+          <button class="chip chip2" data-stock="씨젠">씨젠</button>
+          <button class="chip chip2" data-stock="카카오">카카오</button>
+          <button class="chip chip2" data-stock="대한항공">대한항공</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="cta ss-cta" id="ss2NextBtn" disabled>다음 ▶</button>
+  </div>
+
+  <!-- 화면 9: 투자금 배분 (2차) -->
+  <div class="view" id="view-allocate2">
+    <p class="eyebrow">ALLOCATE BUDGET · ROUND 2</p>
+    <div class="alloc-heading">
+      <div class="line">고른 <span class="pop">4종목</span>에<br><span id="alloc2Total">0</span>만원을 배분해주세요</div>
+    </div>
+
+    <div class="alloc-card" id="allocList2"></div>
+
+    <div class="alloc-balance" id="allocBalanceWrap2">투자금 잔액 <span id="allocBalance2">0</span>만원</div>
+    <p class="alloc-warning" id="allocWarning2">투자금을 전부 사용해 주세요</p>
+    <button class="cta alloc-cta" id="allocNextBtn2">다음 ▶</button>
+  </div>
+
+  <!-- 화면 10: 경제환경 요약 리빌 (2차) -->
+  <div class="view" id="view-reveal2">
+    <div class="rv-heading">
+      <div class="line"><span id="rvName2"></span>님의 투자는<br><span class="pop">2021년 12월 31일</span>까지<br>어떤 일이 있었을까요?</div>
+    </div>
+    <p class="rv-sub">2020.07 → 2021.12 · 그 사이 있었던 일들</p>
+    <div class="rv-list" id="rvList2"></div>
+    <button class="cta rv-cta" id="rv2NextBtn">결과 확인하기 ▶</button>
+  </div>
+
+  <!-- 화면 11: 최종 결과 (2차) -->
+  <div class="view" id="view-result2">
+    <p class="rs-eyebrow">2021.12.31 기준 · 최종 성과</p>
+    <div class="rs-headline">
+      <div class="rs-return" id="rs2Return">-</div>
+      <div class="rs-balance">투자 잔액 <b id="rs2Balance">-</b></div>
+      <div class="rs-assume">2020년 7월 1일 시가에 매수했다고 가정한 결과예요</div>
+    </div>
+
+    <div class="rs-card" id="rs2Card"></div>
+
+    <div class="rs-bench">
+      <div class="rs-bench-title">시장 수익률과 비교</div>
+      <div class="rs-bench-row me"><span>내 포트폴리오</span><span class="val" id="rs2MeVal">-</span></div>
+      <div class="rs-bench-row"><span>S&amp;P500 (미국 시장)</span><span class="val" id="rs2SpxVal">-</span></div>
+      <div class="rs-bench-row"><span>KOSPI200 (한국 시장)</span><span class="val" id="rs2KospiVal">-</span></div>
+      <div class="rs-verdict" id="rs2Verdict"></div>
+    </div>
+
+    <button class="cta rs-leaderboard-cta" id="rs2LeaderboardBtn">🏆 2021년 12월 31일 기준 TOP 10 보기</button>
+  </div>
+
+  <!-- 화면 12: 실시간 리더보드 (2차) -->
+  <div class="view" id="view-leaderboard2">
+    <div class="lb-heading">
+      <div class="line">2021.12.31 기준 <span class="pop">TOP 10</span></div>
+      <p class="lb-sub">전체 교육생 실시간 수익률 순위</p>
+    </div>
+
+    <div class="lb-card" id="lb2Card">
+      <div class="lb-loading">불러오는 중...</div>
+    </div>
+
+    <button class="lb-refresh" id="lb2RefreshBtn">↻ 새로고침</button>
+    <button class="cta" id="toRound3Btn">3차 라운드 시작하기 ▶</button>
+  </div>
+
+</div>
+
+<script>
+const title = "타임머신 모의투자";
+const board = document.getElementById('board');
+[...title].forEach((ch, i) => {
+  if(ch === ' '){
+    const gap = document.createElement('div');
+    gap.className = 'gap';
+    board.appendChild(gap);
+    return;
+  }
+  const tile = document.createElement('div');
+  tile.className = 'flap';
+  tile.textContent = ch;
+  tile.style.animationDelay = (i * 0.09) + 's';
+  board.appendChild(tile);
+});
+
+function fitBoard(){
+  board.style.transform = 'scale(1)';
+  const avail = board.parentElement.clientWidth;
+  const need = board.scrollWidth;
+  if(need > avail){
+    board.style.transform = `scale(${(avail/need*0.98).toFixed(3)})`;
+  }
+}
+window.addEventListener('resize', fitBoard);
+window.addEventListener('load', fitBoard);
+fitBoard();
+
+const viewIntro = document.getElementById('view-intro');
+const viewNickname = document.getElementById('view-nickname');
+const viewTimemachine = document.getElementById('view-timemachine');
+
+function switchView(fromView, toView, after){
+  fromView.classList.add('leaving');
+  setTimeout(()=>{
+    fromView.classList.remove('active','leaving');
+    toView.classList.add('active');
+    if(after) after();
+  }, 300);
+}
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  switchView(viewIntro, viewNickname, ()=>{
+    document.getElementById('nickInput').focus();
+  });
+});
+
+const nickInput = document.getElementById('nickInput');
+const nickCount = document.getElementById('nickCount');
+const enterBtn = document.getElementById('enterBtn');
+const welcomeMsg = document.getElementById('welcomeMsg');
+const tmWrap = document.getElementById('tmWrap');
+const tmFlyer = document.getElementById('tmFlyer');
+const tmMessage = document.getElementById('tmMessage');
+
+nickInput.addEventListener('input', ()=>{
+  const v = nickInput.value.trim();
+  nickCount.textContent = nickInput.value.length;
+  enterBtn.disabled = v.length === 0;
+});
+
+nickInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && !enterBtn.disabled){ enterBtn.click(); }
+});
+
+let currentName = '';
+
+enterBtn.addEventListener('click', ()=>{
+  const name = nickInput.value.trim();
+  if(!name) return;
+  currentName = name;
+  welcomeMsg.innerHTML = `<b>${name}</b>님의 성투를 뜨겁게 응원합니다! 🔥`;
+  welcomeMsg.classList.add('show');
+  enterBtn.disabled = true;
+
+  setTimeout(()=>{
+    switchView(viewNickname, viewTimemachine, ()=> startTimeMachineSequence(name));
+  }, 1300);
+});
+
+function startTimeMachineSequence(name){
+  // 타임머신 좌 → 우 이동 (기존보다 1.5배 느리게, 3초)
+  tmWrap.classList.add('active');
+  tmFlyer.classList.add('fly');
+
+  // 1) 이동 완료 메시지
+  setTimeout(()=>{
+    tmMessage.innerHTML = `<b>${name}</b>님은 타임머신을 타고<br><span class="pop">2020년 1월 1일</span>로 이동했어요 !`;
+    tmMessage.classList.add('show');
+  }, 3200);
+
+  // 2) 메시지 페이드아웃
+  setTimeout(()=>{
+    tmMessage.classList.remove('show');
+  }, 5200);
+
+  // 3) 투자금 지급 메시지
+  setTimeout(()=>{
+    tmMessage.innerHTML = `<b>${name}</b>님에게 투자금 <span class="pop">1천만원</span>이 지급되었어요! 💰`;
+    tmMessage.classList.add('show');
+  }, 5700);
+
+  // 4) 종목 선택 화면으로 자동 전환
+  setTimeout(()=>{
+    switchView(viewTimemachine, viewStockselect, ()=> initStockSelect(name));
+  }, 7900);
+}
+
+// --- 화면 4: 종목 선택 ---
+const viewStockselect = document.getElementById('view-stockselect');
+const ssL1 = document.getElementById('ssL1');
+const ssCount = document.getElementById('ssCount');
+const ssNextBtn = document.getElementById('ssNextBtn');
+const MAX_PICK = 4;
+let selectedStocks = [];
+
+function initStockSelect(name){
+  ssL1.innerHTML = `<b>${name}</b>님은 타임머신을 타고 <span class="pop">2020년 1월</span>로 돌아왔어요 !`;
+}
+
+document.querySelectorAll('#view-stockselect .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    const stock = chip.dataset.stock;
+    if(chip.classList.contains('selected')){
+      selectedStocks = selectedStocks.filter(s=>s!==stock);
+      chip.classList.remove('selected');
+    } else {
+      if(selectedStocks.length >= MAX_PICK) return;
+      selectedStocks.push(stock);
+      chip.classList.add('selected');
+    }
+    ssCount.textContent = selectedStocks.length;
+    ssNextBtn.disabled = selectedStocks.length !== MAX_PICK;
+    document.querySelectorAll('#view-stockselect .chip:not(.selected)').forEach(c=>{
+      c.classList.toggle('disabled', selectedStocks.length >= MAX_PICK);
+    });
+  });
+});
+
+ssNextBtn.addEventListener('click', ()=>{
+  switchView(viewStockselect, viewAllocate, ()=> initAllocate(selectedStocks));
+});
+
+// --- 화면 5: 투자금 배분 ---
+const viewAllocate = document.getElementById('view-allocate');
+const allocList = document.getElementById('allocList');
+const allocBalance = document.getElementById('allocBalance');
+const allocBalanceWrap = document.getElementById('allocBalanceWrap');
+const allocWarning = document.getElementById('allocWarning');
+const allocNextBtn = document.getElementById('allocNextBtn');
+const TOTAL_BUDGET = 1000; // 단위: 만원
+
+function initAllocate(stocks){
+  allocList.innerHTML = '';
+  stocks.forEach((name, i)=>{
+    const row = document.createElement('div');
+    row.className = 'alloc-row';
+    row.innerHTML = `
+      <span><span class="pop">${name}</span> 투자금</span>
+      <span class="alloc-inputwrap">(
+        <input type="number" class="alloc-input" data-idx="${i}" min="0" max="${TOTAL_BUDGET}" step="10" value="0" inputmode="numeric">
+        )<span class="alloc-unit">만원</span>
+      </span>`;
+    allocList.appendChild(row);
+  });
+  document.querySelectorAll('#view-allocate .alloc-input').forEach(inp=>{
+    inp.addEventListener('input', updateAllocBalance);
+  });
+  updateAllocBalance();
+}
+
+function currentAllocUsed(){
+  let used = 0;
+  document.querySelectorAll('#view-allocate .alloc-input').forEach(inp=>{
+    used += Number(inp.value) || 0;
+  });
+  return used;
+}
+
+function updateAllocBalance(){
+  const remain = TOTAL_BUDGET - currentAllocUsed();
+  allocBalance.textContent = remain.toLocaleString('ko-KR');
+  allocBalanceWrap.classList.remove('zero','over');
+  if(remain === 0) allocBalanceWrap.classList.add('zero');
+  else if(remain < 0) allocBalanceWrap.classList.add('over');
+  allocWarning.classList.remove('show');
+}
+
+allocNextBtn.addEventListener('click', ()=>{
+  const remain = TOTAL_BUDGET - currentAllocUsed();
+  if(remain !== 0){
+    allocWarning.classList.remove('show');
+    void allocWarning.offsetWidth; // 애니메이션 재시작을 위한 리플로우
+    allocWarning.classList.add('show');
+    return;
+  }
+  const allocations = {};
+  document.querySelectorAll('#view-allocate .alloc-input').forEach(inp=>{
+    const idx = Number(inp.dataset.idx);
+    allocations[selectedStocks[idx]] = Number(inp.value) || 0; // 단위: 만원
+  });
+  switchView(viewAllocate, viewReveal, ()=> initReveal(currentName, selectedStocks, allocations));
+});
+
+// --- 참고용 주가 데이터 (2020.01.02 / 2020.06.30, 실제 흐름을 반영한 근사치) ---
+// 실서비스 적용 시 yfinance(해외) · pykrx(국내) 검증 데이터로 교체 권장
+const FX_START = 1156; // 원/달러, 2020.01.02
+const FX_END   = 1203; // 원/달러, 2020.06.30
+
+const STOCK_DB = {
+  'S&P500':          { cur:'USD', start:3257.85, end:3100.29, blurb:'미국 증시 전체는 3월 폭락 후 대규모 부양책에 힘입어 낙폭 대부분을 만회했어요.' },
+  '구글':             { cur:'USD', start:1368.68, end:1431.82, blurb:'광고 매출 둔화 우려에도 견조한 클라우드 성장으로 상반기를 방어했어요.' },
+  '맥도날드':         { cur:'USD', start:198.90,  end:178.90,  blurb:'매장 영업 제한으로 타격을 받았지만 배달·드라이브스루 확대로 낙폭을 줄였어요.' },
+  '넷플릭스':         { cur:'USD', start:329.81,  end:455.04,  blurb:'집콕 수요가 폭발하며 넷플릭스는 상반기 내내 강세를 보였어요.' },
+  '씨티그룹':         { cur:'USD', start:79.44,   end:50.79,   blurb:'여신 부실 우려로 씨티그룹을 비롯한 은행주는 상반기 내내 부진했어요.' },
+  '유나이티드 에어라인': { cur:'USD', start:87.42, end:33.86,   blurb:'국경 봉쇄와 여행 수요 급감으로 항공주는 최악의 상반기를 보냈어요.' },
+  '월마트':           { cur:'USD', start:118.94,  end:132.68,  blurb:'생필품 사재기와 온라인 주문 급증으로 월마트는 오히려 반사이익을 누렸어요.' },
+  '모더나':           { cur:'USD', start:19.32,   end:61.27,   blurb:'코로나19 백신 개발 기대감에 모더나 주가는 폭발적으로 상승했어요.' },
+
+  'KOSPI200':  { cur:'KRW', start:293.69,   end:275.73,   blurb:'코스피는 3월 저점 이후 반등했지만 상반기 전체로는 마이너스 수익률을 기록했어요.' },
+  '현대차':     { cur:'KRW', start:126000,  end:100000,  blurb:'공장 셧다운과 글로벌 수요 위축으로 현대차는 큰 폭으로 하락했어요.' },
+  '삼성전자':   { cur:'KRW', start:55200,   end:51900,   blurb:'반도체 업황 우려 속에서도 삼성전자는 비교적 선방했어요.' },
+  'SK하이닉스': { cur:'KRW', start:92700,   end:85700,   blurb:'메모리 반도체 가격 약세로 SK하이닉스는 소폭 조정을 받았어요.' },
+  '국민은행':   { cur:'KRW', start:44750,   end:33850,   blurb:'저금리 기조와 대손충당금 부담으로 KB금융 주가는 하락했어요.' },
+  '하나투어':   { cur:'KRW', start:68900,   end:41300,   blurb:"해외여행 수요가 사실상 '제로'가 되며 하나투어는 큰 폭으로 하락했어요." },
+  '씨젠':       { cur:'KRW', start:32300,   end:172900,  blurb:'코로나19 진단키트 수출이 급증하며 씨젠 주가는 폭등했어요.' },
+  '카카오':     { cur:'KRW', start:149500,  end:221500,  blurb:'비대면 서비스 확산 기대감에 카카오는 상반기 내내 강한 상승세를 보였어요.' },
+  '대한항공':   { cur:'KRW', start:25300,   end:20850,   blurb:'여객 수요는 붕괴했지만 화물 운송 확대로 낙폭을 일부 방어했어요.' },
+};
+
+const MACRO_LINES = [
+  { tag:'2020.01', text:'중국 우한에서 원인불명 폐렴이 보고되며 팬데믹의 시작을 알렸어요.' },
+  { tag:'2020.03', text:'WHO의 팬데믹 선언과 함께 전 세계 증시가 폭락했다가, 각국의 대규모 부양책으로 빠르게 반등했어요.' },
+];
+
+// --- 2차 라운드 참고 데이터 (2020.07.01 / 2021.12.31, 실제 흐름을 반영한 근사치) ---
+// 실서비스 적용 시 yfinance(해외) · pykrx(국내) 검증 데이터로 교체 권장
+const FX_START_R2 = 1203; // 원/달러, 2020.07.01
+const FX_END_R2   = 1189; // 원/달러, 2021.12.31
+
+const STOCK_DB_R2 = {
+  'S&P500':          { cur:'USD', start:3115.86,  end:4766.18,  blurb:'대규모 유동성과 실적 개선에 힘입어 미국 증시는 사상 최고치를 잇달아 경신했어요.' },
+  '구글':             { cur:'USD', start:1452.14,  end:2893.59,  blurb:'디지털 광고·클라우드 매출이 급증하며 구글 주가는 이 기간 거의 2배가 되었어요.' },
+  '맥도날드':         { cur:'USD', start:189.68,   end:263.53,   blurb:'외식 수요가 정상화되며 맥도날드 실적과 주가 모두 꾸준히 회복했어요.' },
+  '넷플릭스':         { cur:'USD', start:485.64,   end:602.44,   blurb:'경쟁 심화 우려 속에서도 넷플릭스는 완만한 상승세를 이어갔어요.' },
+  '씨티그룹':         { cur:'USD', start:51.53,    end:59.61,    blurb:'금리 인상 기대감이 커지며 씨티그룹을 비롯한 은행주가 서서히 회복했어요.' },
+  '유나이티드 에어라인': { cur:'USD', start:34.90,  end:42.90,    blurb:'백신 보급과 여행 재개 기대감에도 항공 수요는 완전히 회복되지 못했어요.' },
+  '월마트':           { cur:'USD', start:130.24,   end:144.11,   blurb:'꾸준한 소비 수요 속에 월마트는 안정적인 우상향 흐름을 보였어요.' },
+  '모더나':           { cur:'USD', start:71.67,    end:253.92,   blurb:'백신 접종 확대와 부스터샷 수요로 모더나 주가는 폭발적으로 상승했어요.' },
+
+  'KOSPI200':  { cur:'KRW', start:288.68,   end:393.61,   blurb:'유동성 랠리에 힘입어 코스피는 2021년 내내 사상 최고치권에서 움직였어요.' },
+  '현대차':     { cur:'KRW', start:105500,  end:196000,  blurb:'전기차 전환 기대감과 실적 개선으로 현대차 주가는 크게 뛰었어요.' },
+  '삼성전자':   { cur:'KRW', start:52600,   end:78300,   blurb:'반도체 슈퍼사이클 기대감에 삼성전자는 꾸준한 상승세를 보였어요.' },
+  'SK하이닉스': { cur:'KRW', start:84300,   end:122000,  blurb:'메모리 반도체 가격 반등으로 SK하이닉스 주가도 함께 올랐어요.' },
+  '국민은행':   { cur:'KRW', start:34650,   end:51500,   blurb:'금리 인상 기대감이 커지며 KB금융 등 은행주가 큰 폭으로 반등했어요.' },
+  '하나투어':   { cur:'KRW', start:42300,   end:61700,   blurb:'여행 재개 기대감이 반복되며 하나투어는 등락을 거듭하면서도 반등했어요.' },
+  '씨젠':       { cur:'KRW', start:168700,  end:43150,   blurb:'진단키트 특수가 사그라들고 경쟁까지 심화되며 씨젠 주가는 크게 되돌림됐어요.' },
+  '카카오':     { cur:'KRW', start:46200,   end:113000,  blurb:'플랫폼 사업 확장 기대감에 카카오는 이 기간 국내 대표 성장주로 자리잡았어요.' },
+  '대한항공':   { cur:'KRW', start:21850,   end:29750,   blurb:'여객 수요는 부진했지만 화물 호조와 재무구조 개선 기대로 주가는 반등했어요.' },
+};
+
+const MACRO_LINES_R2 = [
+  { tag:'2020.11', text:'화이자·모더나의 코로나19 백신 개발 성공 소식이 전해지며 시장은 '+"'"+'리오프닝'+"'"+' 기대감에 들썩였어요.' },
+  { tag:'2021.03', text:'미국의 초대형 경기부양책 통과로 유동성이 시장에 계속 풀렸어요.' },
+  { tag:'2021.11', text:'물가 상승(인플레이션) 우려가 커지며 각국 중앙은행의 금리 인상 논의가 시작됐어요.' },
+];
+
+// --- 3차 라운드 참고 데이터 (2022.01.01 / 2022.12.31, 실제 흐름을 반영한 근사치) ---
+const FX_START_R3 = 1189; // 원/달러, 2022.01.01
+const FX_END_R3   = 1275; // 원/달러, 2022.12.31 (금리 인상기 원화 약세)
+
+const STOCK_DB_R3 = {
+  'S&P500':          { cur:'USD', start:4766.18,  end:3839.50,  blurb:'가파른 금리 인상 여파로 미국 증시는 2008년 이후 최악의 한 해를 보냈어요.' },
+  '구글':             { cur:'USD', start:144.68,   end:88.23,    blurb:'광고 시장 위축과 금리 인상 부담으로 기술주인 구글도 크게 하락했어요.' },
+  '맥도날드':         { cur:'USD', start:263.53,   end:261.63,   blurb:'경기 방어주 성격 덕분에 맥도날드는 약세장 속에서도 잘 버텼어요.' },
+  '넷플릭스':         { cur:'USD', start:602.44,   end:294.88,   blurb:'가입자 수 감소 충격이 알려지며 넷플릭스 주가는 폭락했어요.' },
+  '씨티그룹':         { cur:'USD', start:59.61,    end:48.03,    blurb:'경기 침체 우려로 씨티그룹을 비롯한 은행주도 하락을 피하지 못했어요.' },
+  '유나이티드 에어라인': { cur:'USD', start:42.90,  end:39.65,    blurb:'여행 수요는 회복되었지만 고유가와 경기 침체 우려가 발목을 잡았어요.' },
+  '월마트':           { cur:'USD', start:144.11,   end:141.02,   blurb:'생필품 수요 덕분에 월마트는 약세장에서도 비교적 선방했어요.' },
+  '모더나':           { cur:'USD', start:253.92,   end:179.68,   blurb:'백신 수요가 줄어들며 모더나 주가는 큰 폭으로 조정받았어요.' },
+
+  'KOSPI200':  { cur:'KRW', start:393.61,   end:309.05,   blurb:'글로벌 긴축 기조에 코스피도 큰 폭의 하락을 피하지 못했어요.' },
+  '현대차':     { cur:'KRW', start:196000,  end:165500,  blurb:'수요 둔화 우려 속에 현대차도 조정을 받았어요.' },
+  '삼성전자':   { cur:'KRW', start:78300,   end:55300,   blurb:'반도체 다운사이클 진입으로 삼성전자 주가는 큰 폭으로 하락했어요.' },
+  'SK하이닉스': { cur:'KRW', start:122000,  end:75500,   blurb:'메모리 반도체 가격 급락으로 SK하이닉스는 더 크게 흔들렸어요.' },
+  '국민은행':   { cur:'KRW', start:51500,   end:47950,   blurb:'금리 인상 수혜에도 경기 침체 우려가 겹치며 은행주는 소폭 하락했어요.' },
+  '하나투어':   { cur:'KRW', start:61700,   end:54700,   blurb:'해외여행이 서서히 재개됐지만 완전한 회복까지는 시간이 더 필요했어요.' },
+  '씨젠':       { cur:'KRW', start:168700,  end:43150,   blurb:'코로나19 특수가 끝나며 씨젠 주가는 계속해서 큰 폭으로 하락했어요.' },
+  '카카오':     { cur:'KRW', start:113000,  end:53500,   blurb:'금리 인상과 데이터센터 화재 사고 여파로 카카오 주가는 크게 하락했어요.' },
+  '대한항공':   { cur:'KRW', start:29750,   end:24200,   blurb:'화물 운임 호조는 지속됐지만 경기 침체 우려에 주가는 조정받았어요.' },
+};
+
+const MACRO_LINES_R3 = [
+  { tag:'2022.02', text:'러시아의 우크라이나 침공으로 에너지·원자재 가격이 급등했어요.' },
+  { tag:'2022.06', text:'40년 만의 최고 수준 인플레이션에 미국 연준이 공격적인 금리 인상을 이어갔어요.' },
+  { tag:'2022.10', text:'원/달러 환율이 1,440원을 넘어서는 등 원화 약세가 뚜렷해졌어요.' },
+];
+
+// --- 4차 라운드 참고 데이터 (2023.01.01 / 2024.12.31, 실제 흐름을 반영한 근사치) ---
+const FX_START_R4 = 1275; // 원/달러, 2023.01.01
+const FX_END_R4   = 1472; // 원/달러, 2024.12.31 (연말 정치 불확실성으로 원화 약세 심화)
+
+const STOCK_DB_R4 = {
+  'S&P500':          { cur:'USD', start:3839.50, end:5881.63,  blurb:'AI 붐과 함께 미국 증시는 2년 연속 강한 상승세를 이어갔어요.' },
+  '구글':             { cur:'USD', start:88.23,   end:192.06,   blurb:'생성형 AI 경쟁 속에서도 클라우드·검색 실적 호조로 구글 주가는 크게 올랐어요.' },
+  '맥도날드':         { cur:'USD', start:261.63,  end:296.72,   blurb:'꾸준한 수요 속에 맥도날드는 완만한 우상향 흐름을 이어갔어요.' },
+  '넷플릭스':         { cur:'USD', start:294.88,  end:891.32,   blurb:'광고요금제와 계정 공유 단속이 성공하며 넷플릭스 주가는 크게 반등했어요.' },
+  '씨티그룹':         { cur:'USD', start:48.03,   end:70.02,    blurb:'금리 인하 기대감과 실적 개선으로 씨티그룹 주가는 반등했어요.' },
+  '유나이티드 에어라인': { cur:'USD', start:39.65, end:93.66,    blurb:'여행 수요가 완전히 회복되며 항공주는 큰 폭으로 반등했어요.' },
+  '월마트':           { cur:'USD', start:47.01,   end:92.68,    blurb:'실적 호조와 온라인 성장으로 월마트 주가는 이 기간 거의 2배가 되었어요.' },
+  '모더나':           { cur:'USD', start:179.68,  end:39.35,    blurb:'코로나19 백신 수요가 사실상 사라지며 모더나 주가는 폭락했어요.' },
+
+  'KOSPI200':  { cur:'KRW', start:309.05,  end:339.65,  blurb:'글로벌 증시 대비 코스피는 상대적으로 부진한 흐름을 보였어요.' },
+  '현대차':     { cur:'KRW', start:165500, end:204000,  blurb:'글로벌 판매 호조와 주주환원 확대로 현대차 주가는 상승했어요.' },
+  '삼성전자':   { cur:'KRW', start:55300,  end:53100,   blurb:'AI 메모리 경쟁에서 다소 뒤처지며 삼성전자는 기대만큼 오르지 못했어요.' },
+  'SK하이닉스': { cur:'KRW', start:75500,  end:176000,  blurb:'AI 서버용 고대역폭메모리(HBM) 수요 폭발로 SK하이닉스 주가는 급등했어요.' },
+  '국민은행':   { cur:'KRW', start:47950,  end:78700,   blurb:'주주환원 확대 기대감에 KB금융을 비롯한 은행주가 큰 폭으로 올랐어요.' },
+  '하나투어':   { cur:'KRW', start:54700,  end:41800,   blurb:'해외여행 수요는 회복됐지만 경쟁 심화로 주가는 오히려 부진했어요.' },
+  '씨젠':       { cur:'KRW', start:25200,  end:15800,   blurb:'코로나19 이후 실적 공백을 메우지 못하며 씨젠 주가는 계속 하락했어요.' },
+  '카카오':     { cur:'KRW', start:53500,  end:37150,   blurb:'성장 둔화 우려가 이어지며 카카오 주가는 부진한 흐름을 지속했어요.' },
+  '대한항공':   { cur:'KRW', start:24200,  end:22350,   blurb:'여행 수요 회복에도 유가 부담이 겹치며 주가는 소폭 약세를 보였어요.' },
+};
+
+const MACRO_LINES_R4 = [
+  { tag:'2023.03', text:'실리콘밸리은행(SVB) 파산 등 미국 중소은행 위기가 시장을 흔들었어요.' },
+  { tag:'2023.11', text:'생성형 AI 열풍이 본격화되며 관련 기업들의 주가가 급등했어요.' },
+  { tag:'2024.12', text:'국내 정치적 불확실성이 커지며 원/달러 환율이 1,470원을 넘어섰어요.' },
+];
+
+function endValueKrw(stockName, investedManwon, db, fxStart, fxEnd){
+  db = db || STOCK_DB; fxStart = fxStart || FX_START; fxEnd = fxEnd || FX_END;
+  const s = db[stockName];
+  const investedKrw = investedManwon * 10000;
+  if(!s || investedKrw === 0) return 0;
+  if(s.cur === 'USD'){
+    const usd = investedKrw / fxStart;
+    const shares = usd / s.start;
+    return shares * s.end * fxEnd;
+  } else {
+    const shares = investedKrw / s.start;
+    return shares * s.end;
+  }
+}
+
+// --- 화면 5.5: 경제환경/종목 요약 리빌 ---
+const viewReveal = document.getElementById('view-reveal');
+const rvName = document.getElementById('rvName');
+const rvList = document.getElementById('rvList');
+const rvNextBtn = document.getElementById('rvNextBtn');
+let currentAllocations = {};
+
+// 한 줄씩 나타났다 사라지고, 다음 줄이 같은 자리에 나타나는 재사용 가능한 리빌 시퀀스 엔진
+function runRevealSequence(listEl, lines, onDone){
+  listEl.innerHTML = `<div class="rv-line" id="__rv_line"><span class="tagline" id="__rv_tag"></span><span id="__rv_text"></span></div>`;
+  const lineEl = listEl.querySelector('#__rv_line');
+  const tagEl = listEl.querySelector('#__rv_tag');
+  const textEl = listEl.querySelector('#__rv_text');
+
+  let i = 0;
+  function step(){
+    if(i >= lines.length){ onDone(); return; }
+    tagEl.textContent = lines[i].tag;
+    textEl.textContent = lines[i].text;
+    lineEl.classList.add('show');
+    setTimeout(()=>{
+      lineEl.classList.remove('show');
+      setTimeout(()=>{ i++; step(); }, 500); // 페이드아웃 후 다음 줄로
+    }, 2000); // 한 줄이 화면에 머무는 시간
+  }
+  setTimeout(step, 400);
+}
+
+function initReveal(name, stocks, allocations){
+  currentAllocations = allocations;
+  rvName.textContent = name;
+  rvNextBtn.classList.remove('show');
+
+  const lines = [
+    ...MACRO_LINES,
+    ...stocks.map(s => ({ tag:s, text: STOCK_DB[s] ? STOCK_DB[s].blurb : '' }))
+  ];
+
+  runRevealSequence(rvList, lines, ()=> rvNextBtn.classList.add('show'));
+}
+
+rvNextBtn.addEventListener('click', ()=>{
+  switchView(viewReveal, viewResult, ()=> initResult(currentName, selectedStocks, currentAllocations));
+});
+
+// --- 화면 6: 최종 결과 ---
+const viewResult = document.getElementById('view-result');
+const rsReturn = document.getElementById('rsReturn');
+const rsBalance = document.getElementById('rsBalance');
+const rsCard = document.getElementById('rsCard');
+const rsMeVal = document.getElementById('rsMeVal');
+const rsSpxVal = document.getElementById('rsSpxVal');
+const rsKospiVal = document.getElementById('rsKospiVal');
+const rsVerdict = document.getElementById('rsVerdict');
+
+function pctLabel(p){ return (p>=0?'+':'') + p.toFixed(1) + '%'; }
+
+function initResult(name, stocks, allocations){
+  let totalEnd = 0;
+  rsCard.innerHTML = '';
+
+  stocks.forEach(s=>{
+    const invested = allocations[s] || 0;
+    const endKrw = endValueKrw(s, invested);
+    totalEnd += endKrw;
+    const returnPct = invested>0 ? (endKrw/(invested*10000) - 1)*100 : 0;
+    const row = document.createElement('div');
+    row.className = 'rs-row';
+    row.innerHTML = `
+      <span class="rs-name">${s}</span>
+      <span class="rs-pct ${returnPct>=0?'up':'down'}">${pctLabel(returnPct)}</span>
+      <span class="rs-amt">${Math.round(endKrw/10000).toLocaleString('ko-KR')}만원</span>`;
+    rsCard.appendChild(row);
+  });
+
+  const totalReturnPct = (totalEnd/10000000 - 1)*100;
+  rsReturn.textContent = pctLabel(totalReturnPct);
+  rsReturn.className = 'rs-return ' + (totalReturnPct>=0?'up':'down');
+  rsBalance.innerHTML = `<b>${Math.round(totalEnd/10000).toLocaleString('ko-KR')}만원</b>`;
+
+  const spxPct = (STOCK_DB['S&P500'].end/STOCK_DB['S&P500'].start - 1)*100;
+  const kospiPct = (STOCK_DB['KOSPI200'].end/STOCK_DB['KOSPI200'].start - 1)*100;
+
+  rsMeVal.textContent = pctLabel(totalReturnPct);
+  rsMeVal.className = 'val ' + (totalReturnPct>=0?'up':'down');
+  rsSpxVal.textContent = pctLabel(spxPct);
+  rsSpxVal.className = 'val ' + (spxPct>=0?'up':'down');
+  rsKospiVal.textContent = pctLabel(kospiPct);
+  rsKospiVal.className = 'val ' + (kospiPct>=0?'up':'down');
+
+  const bestBenchmark = Math.max(spxPct, kospiPct);
+  const gap = totalReturnPct - bestBenchmark;
+  if(gap >= 0){
+    rsVerdict.innerHTML = `시장 평균보다 <span class="pop">${gap.toFixed(1)}%p</span> 더 좋은 성과를 냈어요 👏`;
+  } else {
+    rsVerdict.innerHTML = `시장 평균보다 <span class="pop">${Math.abs(gap).toFixed(1)}%p</span> 낮은 성과였어요`;
+  }
+
+  // 구글시트 리더보드에 결과 제출 (1라운드)
+  submitResult(name, totalReturnPct, 1);
+
+  // 2차 라운드(2020.07~2021.12) 투자금 기준으로 사용
+  round1EndManwon = Math.round(totalEnd/10000);
+}
+let round1EndManwon = 1000;
+let round2EndManwon = 1000;
+let round3EndManwon = 1000;
+let round4EndManwon = 1000;
+
+// ===== 리더보드 (구글시트 연동) =====
+// 아래 SHEET_API_URL에 Apps Script 배포 후 받은 웹 앱 URL을 붙여넣으세요.
+// 예: 'https://script.google.com/macros/s/AKfycbx.../exec'
+const SHEET_API_URL = '여기에_배포된_웹앱_URL을_붙여넣으세요';
+
+function submitResult(nickname, returnPct, round){
+  if(!SHEET_API_URL || SHEET_API_URL.includes('여기에')) return; // URL 미설정 시 조용히 스킵
+  fetch(SHEET_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // CORS 프리플라이트 회피용
+    body: JSON.stringify({ nickname, returnPct: Number(returnPct.toFixed(2)), round: round || 1 })
+  }).catch(()=>{ /* 실패해도 화면 흐름에는 영향 없도록 조용히 무시 */ });
+}
+
+// 라운드별로 재사용 가능한 리더보드 조회 함수
+async function fetchLeaderboardForRound(round, cardEl){
+  cardEl.innerHTML = '<div class="lb-loading">불러오는 중...</div>';
+
+  if(!SHEET_API_URL || SHEET_API_URL.includes('여기에')){
+    cardEl.innerHTML = '<div class="lb-empty">아직 리더보드 연동 URL이 설정되지 않았어요.</div>';
+    return;
+  }
+
+  try{
+    const res = await fetch(SHEET_API_URL);
+    const data = await res.json();
+    if(!Array.isArray(data) || data.length === 0){
+      cardEl.innerHTML = '<div class="lb-empty">아직 등록된 결과가 없어요.</div>';
+      return;
+    }
+    const top10 = [...data]
+      .filter(d => typeof d.returnPct === 'number' && !isNaN(d.returnPct) && (d.round || 1) === round)
+      .sort((a,b)=> b.returnPct - a.returnPct)
+      .slice(0, 10);
+
+    if(top10.length === 0){
+      cardEl.innerHTML = '<div class="lb-empty">아직 이 라운드에 등록된 결과가 없어요.</div>';
+      return;
+    }
+
+    cardEl.innerHTML = '';
+    top10.forEach((row, i)=>{
+      const rankClass = i===0 ? 'gold' : i===1 ? 'silver' : i===2 ? 'bronze' : '';
+      const el = document.createElement('div');
+      el.className = 'lb-row';
+      el.innerHTML = `
+        <span class="lb-rank ${rankClass}">${i+1}</span>
+        <span class="lb-name">${row.nickname}</span>
+        <span class="lb-pct ${row.returnPct>=0?'up':'down'}">${row.returnPct>=0?'+':''}${row.returnPct.toFixed(1)}%</span>`;
+      cardEl.appendChild(el);
+    });
+  } catch(err){
+    cardEl.innerHTML = '<div class="lb-empty">불러오지 못했어요. 잠시 후 다시 시도해주세요.</div>';
+  }
+}
+
+const viewLeaderboard = document.getElementById('view-leaderboard');
+const lbCard = document.getElementById('lbCard');
+const rsLeaderboardBtn = document.getElementById('rsLeaderboardBtn');
+const lbRefreshBtn = document.getElementById('lbRefreshBtn');
+
+function fetchLeaderboard(){ return fetchLeaderboardForRound(1, lbCard); }
+
+rsLeaderboardBtn.addEventListener('click', ()=>{
+  switchView(viewResult, viewLeaderboard, fetchLeaderboard);
+});
+lbRefreshBtn.addEventListener('click', fetchLeaderboard);
+
+// ===================================================================
+// ===== 2차 라운드 (2020.07 ~ 2021.12) =====
+// ===================================================================
+
+const viewStockselect2 = document.getElementById('view-stockselect2');
+const viewAllocate2 = document.getElementById('view-allocate2');
+const viewReveal2 = document.getElementById('view-reveal2');
+const viewResult2 = document.getElementById('view-result2');
+const toRound2Btn = document.getElementById('toRound2Btn');
+
+toRound2Btn.addEventListener('click', ()=>{
+  switchView(viewLeaderboard, viewStockselect2, ()=> initStockSelect2(currentName));
+});
+
+// --- 화면 8: 종목 선택 (2차) ---
+const ss2L1 = document.getElementById('ss2L1');
+const ss2Count = document.getElementById('ss2Count');
+const ss2NextBtn = document.getElementById('ss2NextBtn');
+let selectedStocks2 = [];
+
+function initStockSelect2(name){
+  ss2L1.innerHTML = `<b>${name}</b>님의 2020년 6월 말 포트폴리오는 <span class="pop">${round1EndManwon.toLocaleString('ko-KR')}만원</span>이 되었어요`;
+  // 새 라운드 진입 시 선택 상태 초기화
+  selectedStocks2 = [];
+  ss2Count.textContent = 0;
+  ss2NextBtn.disabled = true;
+  document.querySelectorAll('#view-stockselect2 .chip').forEach(c=>{
+    c.classList.remove('selected','disabled');
+  });
+}
+
+document.querySelectorAll('#view-stockselect2 .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    const stock = chip.dataset.stock;
+    if(chip.classList.contains('selected')){
+      selectedStocks2 = selectedStocks2.filter(s=>s!==stock);
+      chip.classList.remove('selected');
+    } else {
+      if(selectedStocks2.length >= MAX_PICK) return;
+      selectedStocks2.push(stock);
+      chip.classList.add('selected');
+    }
+    ss2Count.textContent = selectedStocks2.length;
+    ss2NextBtn.disabled = selectedStocks2.length !== MAX_PICK;
+    document.querySelectorAll('#view-stockselect2 .chip:not(.selected)').forEach(c=>{
+      c.classList.toggle('disabled', selectedStocks2.length >= MAX_PICK);
+    });
+  });
+});
+
+ss2NextBtn.addEventListener('click', ()=>{
+  switchView(viewStockselect2, viewAllocate2, ()=> initAllocate2(selectedStocks2));
+});
+
+// --- 화면 9: 투자금 배분 (2차) ---
+const alloc2Total = document.getElementById('alloc2Total');
+const allocList2 = document.getElementById('allocList2');
+const allocBalance2 = document.getElementById('allocBalance2');
+const allocBalanceWrap2 = document.getElementById('allocBalanceWrap2');
+const allocWarning2 = document.getElementById('allocWarning2');
+const allocNextBtn2 = document.getElementById('allocNextBtn2');
+
+function initAllocate2(stocks){
+  alloc2Total.textContent = round1EndManwon.toLocaleString('ko-KR');
+  allocList2.innerHTML = '';
+  stocks.forEach((name, i)=>{
+    const row = document.createElement('div');
+    row.className = 'alloc-row';
+    row.innerHTML = `
+      <span><span class="pop">${name}</span> 투자금</span>
+      <span class="alloc-inputwrap">(
+        <input type="number" class="alloc-input" data-idx="${i}" min="0" max="${round1EndManwon}" step="10" value="0" inputmode="numeric">
+        )<span class="alloc-unit">만원</span>
+      </span>`;
+    allocList2.appendChild(row);
+  });
+  document.querySelectorAll('#view-allocate2 .alloc-input').forEach(inp=>{
+    inp.addEventListener('input', updateAllocBalance2);
+  });
+  updateAllocBalance2();
+}
+
+function currentAllocUsed2(){
+  let used = 0;
+  document.querySelectorAll('#view-allocate2 .alloc-input').forEach(inp=>{
+    used += Number(inp.value) || 0;
+  });
+  return used;
+}
+
+function updateAllocBalance2(){
+  const remain = round1EndManwon - currentAllocUsed2();
+  allocBalance2.textContent = remain.toLocaleString('ko-KR');
+  allocBalanceWrap2.classList.remove('zero','over');
+  if(remain === 0) allocBalanceWrap2.classList.add('zero');
+  else if(remain < 0) allocBalanceWrap2.classList.add('over');
+  allocWarning2.classList.remove('show');
+}
+
+let currentAllocations2 = {};
+
+allocNextBtn2.addEventListener('click', ()=>{
+  const remain = round1EndManwon - currentAllocUsed2();
+  if(remain !== 0){
+    allocWarning2.classList.remove('show');
+    void allocWarning2.offsetWidth;
+    allocWarning2.classList.add('show');
+    return;
+  }
+  const allocations = {};
+  document.querySelectorAll('#view-allocate2 .alloc-input').forEach(inp=>{
+    const idx = Number(inp.dataset.idx);
+    allocations[selectedStocks2[idx]] = Number(inp.value) || 0;
+  });
+  currentAllocations2 = allocations;
+  switchView(viewAllocate2, viewReveal2, ()=> initReveal2(currentName, selectedStocks2));
+});
+
+// --- 화면 10: 경제환경 요약 리빌 (2차) ---
+const rvName2 = document.getElementById('rvName2');
+const rvList2 = document.getElementById('rvList2');
+const rv2NextBtn = document.getElementById('rv2NextBtn');
+
+function initReveal2(name, stocks){
+  rvName2.textContent = name;
+  rv2NextBtn.classList.remove('show');
+
+  const lines = [
+    ...MACRO_LINES_R2,
+    ...stocks.map(s => ({ tag:s, text: STOCK_DB_R2[s] ? STOCK_DB_R2[s].blurb : '' }))
+  ];
+
+  runRevealSequence(rvList2, lines, ()=> rv2NextBtn.classList.add('show'));
+}
+
+rv2NextBtn.addEventListener('click', ()=>{
+  switchView(viewReveal2, viewResult2, ()=> initResult2(currentName, selectedStocks2, currentAllocations2));
+});
+
+// --- 화면 11: 최종 결과 (2차) ---
+const rs2Return = document.getElementById('rs2Return');
+const rs2Balance = document.getElementById('rs2Balance');
+const rs2Card = document.getElementById('rs2Card');
+const rs2MeVal = document.getElementById('rs2MeVal');
+const rs2SpxVal = document.getElementById('rs2SpxVal');
+const rs2KospiVal = document.getElementById('rs2KospiVal');
+const rs2Verdict = document.getElementById('rs2Verdict');
+
+function initResult2(name, stocks, allocations){
+  let totalEnd = 0;
+  rs2Card.innerHTML = '';
+
+  stocks.forEach(s=>{
+    const invested = allocations[s] || 0;
+    const endKrw = endValueKrw(s, invested, STOCK_DB_R2, FX_START_R2, FX_END_R2);
+    totalEnd += endKrw;
+    const returnPct = invested>0 ? (endKrw/(invested*10000) - 1)*100 : 0;
+    const row = document.createElement('div');
+    row.className = 'rs-row';
+    row.innerHTML = `
+      <span class="rs-name">${s}</span>
+      <span class="rs-pct ${returnPct>=0?'up':'down'}">${pctLabel(returnPct)}</span>
+      <span class="rs-amt">${Math.round(endKrw/10000).toLocaleString('ko-KR')}만원</span>`;
+    rs2Card.appendChild(row);
+  });
+
+  const baseKrw = round1EndManwon * 10000;
+  const totalReturnPct = baseKrw>0 ? (totalEnd/baseKrw - 1)*100 : 0;
+  rs2Return.textContent = pctLabel(totalReturnPct);
+  rs2Return.className = 'rs-return ' + (totalReturnPct>=0?'up':'down');
+  rs2Balance.innerHTML = `<b>${Math.round(totalEnd/10000).toLocaleString('ko-KR')}만원</b>`;
+
+  const spxPct = (STOCK_DB_R2['S&P500'].end/STOCK_DB_R2['S&P500'].start - 1)*100;
+  const kospiPct = (STOCK_DB_R2['KOSPI200'].end/STOCK_DB_R2['KOSPI200'].start - 1)*100;
+
+  rs2MeVal.textContent = pctLabel(totalReturnPct);
+  rs2MeVal.className = 'val ' + (totalReturnPct>=0?'up':'down');
+  rs2SpxVal.textContent = pctLabel(spxPct);
+  rs2SpxVal.className = 'val ' + (spxPct>=0?'up':'down');
+  rs2KospiVal.textContent = pctLabel(kospiPct);
+  rs2KospiVal.className = 'val ' + (kospiPct>=0?'up':'down');
+
+  const bestBenchmark = Math.max(spxPct, kospiPct);
+  const gap = totalReturnPct - bestBenchmark;
+  if(gap >= 0){
+    rs2Verdict.innerHTML = `시장 평균보다 <span class="pop">${gap.toFixed(1)}%p</span> 더 좋은 성과를 냈어요 👏`;
+  } else {
+    rs2Verdict.innerHTML = `시장 평균보다 <span class="pop">${Math.abs(gap).toFixed(1)}%p</span> 낮은 성과였어요`;
+  }
+
+  // 구글시트 리더보드에 결과 제출 (2라운드)
+  submitResult(name, totalReturnPct, 2);
+
+  // 3차 라운드(2022.01~2022.12) 투자금 기준으로 사용
+  round2EndManwon = Math.round(totalEnd/10000);
+}
+
+// --- 화면 12: 리더보드 (2차) ---
+const viewLeaderboard2 = document.getElementById('view-leaderboard2');
+const lb2Card = document.getElementById('lb2Card');
+const rs2LeaderboardBtn = document.getElementById('rs2LeaderboardBtn');
+const lb2RefreshBtn = document.getElementById('lb2RefreshBtn');
+const toRound3Btn = document.getElementById('toRound3Btn');
+
+rs2LeaderboardBtn.addEventListener('click', ()=>{
+  switchView(viewResult2, viewLeaderboard2, ()=> fetchLeaderboardForRound(2, lb2Card));
+});
+lb2RefreshBtn.addEventListener('click', ()=> fetchLeaderboardForRound(2, lb2Card));
+
+// ===================================================================
+// ===== 3차·4차 라운드 생성 엔진 (재사용 가능한 범용 빌더) =====
+// ===================================================================
+
+const US_STOCK_NAMES = ['S&P500','구글','맥도날드','넷플릭스','씨티그룹','유나이티드 에어라인','월마트','모더나'];
+const KR_STOCK_NAMES = ['KOSPI200','현대차','삼성전자','SK하이닉스','국민은행','하나투어','씨젠','카카오','대한항공'];
+
+function chipsHtml(names){
+  return names.map(n => `<button class="chip" data-stock="${n}">${n === 'S&P500' ? 'S&amp;P500' : n}</button>`).join('');
+}
+
+const ROUND_VIEWS = {}; // { [num]: { selectView, initSelect } }
+
+function createRoundViews(cfg){
+  const N = cfg.num;
+  const stage = document.querySelector('.stage');
+  let selectedStocksN = [];
+  let allocationsN = {};
+
+  // ---- 화면: 종목 선택 ----
+  const vSel = document.createElement('div');
+  vSel.className = 'view';
+  vSel.id = 'view-stockselect' + N;
+  vSel.innerHTML = `
+    <div class="ss-header">
+      <div class="l1" id="ss${N}L1"></div>
+      <div class="l2 warn">${cfg.warnText}</div>
+      <div class="l3">아래 주식 종목 중 관심있는 것을 <span class="pop">4개</span> 골라주세요</div>
+    </div>
+    <div class="ss-counter">선택됨 <b id="ss${N}Count">0</b>/4</div>
+    <div class="ss-groups">
+      <div>
+        <div class="ss-group-label">🇺🇸 미국</div>
+        <div class="ss-chips">${chipsHtml(US_STOCK_NAMES)}</div>
+      </div>
+      <div>
+        <div class="ss-group-label">🇰🇷 한국</div>
+        <div class="ss-chips">${chipsHtml(KR_STOCK_NAMES)}</div>
+      </div>
+    </div>
+    <button class="cta ss-cta" id="ss${N}NextBtn" disabled>다음 ▶</button>
+  `;
+  stage.appendChild(vSel);
+
+  // ---- 화면: 투자금 배분 ----
+  const vAlloc = document.createElement('div');
+  vAlloc.className = 'view';
+  vAlloc.id = 'view-allocate' + N;
+  vAlloc.innerHTML = `
+    <p class="eyebrow">ALLOCATE BUDGET · ROUND ${N}</p>
+    <div class="alloc-heading">
+      <div class="line">고른 <span class="pop">4종목</span>에<br><span id="alloc${N}Total">0</span>만원을 배분해주세요</div>
+    </div>
+    <div class="alloc-card" id="allocList${N}"></div>
+    <div class="alloc-balance" id="allocBalanceWrap${N}">투자금 잔액 <span id="allocBalance${N}">0</span>만원</div>
+    <p class="alloc-warning" id="allocWarning${N}">투자금을 전부 사용해 주세요</p>
+    <button class="cta alloc-cta" id="allocNextBtn${N}">다음 ▶</button>
+  `;
+  stage.appendChild(vAlloc);
+
+  // ---- 화면: 경제환경 요약 리빌 ----
+  const vReveal = document.createElement('div');
+  vReveal.className = 'view';
+  vReveal.id = 'view-reveal' + N;
+  vReveal.innerHTML = `
+    <div class="rv-heading">
+      <div class="line"><span id="rv${N}Name"></span>님의 투자는<br><span class="pop">${cfg.revealHeadlineDate}</span>까지<br>어떤 일이 있었을까요?</div>
+    </div>
+    <p class="rv-sub">${cfg.revealSub}</p>
+    <div class="rv-list" id="rvList${N}"></div>
+    <button class="cta rv-cta" id="rv${N}NextBtn">결과 확인하기 ▶</button>
+  `;
+  stage.appendChild(vReveal);
+
+  // ---- 화면: 최종 결과 ----
+  const vResult = document.createElement('div');
+  vResult.className = 'view';
+  vResult.id = 'view-result' + N;
+  vResult.innerHTML = `
+    <p class="rs-eyebrow">${cfg.resultEyebrow}</p>
+    <div class="rs-headline">
+      <div class="rs-return" id="rs${N}Return">-</div>
+      <div class="rs-balance">투자 잔액 <b id="rs${N}Balance">-</b></div>
+      <div class="rs-assume">${cfg.resultAssume}</div>
+    </div>
+    <div class="rs-card" id="rs${N}Card"></div>
+    <div class="rs-bench">
+      <div class="rs-bench-title">시장 수익률과 비교</div>
+      <div class="rs-bench-row me"><span>내 포트폴리오</span><span class="val" id="rs${N}MeVal">-</span></div>
+      <div class="rs-bench-row"><span>S&amp;P500 (미국 시장)</span><span class="val" id="rs${N}SpxVal">-</span></div>
+      <div class="rs-bench-row"><span>KOSPI200 (한국 시장)</span><span class="val" id="rs${N}KospiVal">-</span></div>
+      <div class="rs-verdict" id="rs${N}Verdict"></div>
+    </div>
+    <button class="cta rs-leaderboard-cta" id="rs${N}LeaderboardBtn">🏆 ${cfg.lbDateLabel} 기준 TOP 10 보기</button>
+  `;
+  stage.appendChild(vResult);
+
+  // ---- 화면: 리더보드 ----
+  const vLb = document.createElement('div');
+  vLb.className = 'view';
+  vLb.id = 'view-leaderboard' + N;
+  vLb.innerHTML = `
+    <div class="lb-heading">
+      <div class="line">${cfg.lbDateLabel} <span class="pop">TOP 10</span></div>
+      <p class="lb-sub">전체 교육생 실시간 수익률 순위</p>
+    </div>
+    <div class="lb-card" id="lb${N}Card"><div class="lb-loading">불러오는 중...</div></div>
+    <button class="lb-refresh" id="lb${N}RefreshBtn">↻ 새로고침</button>
+    ${cfg.nextRoundNum ? `<button class="cta" id="toRound${cfg.nextRoundNum}Btn">${cfg.nextRoundNum}차 라운드 시작하기 ▶</button>` : `<p class="lb-sub" style="margin-top:6px;">🎉 4년간의 투자 여정이 모두 끝났어요. 수고하셨습니다!</p>`}
+  `;
+  stage.appendChild(vLb);
+
+  // ---- 이벤트 바인딩: 종목 선택 ----
+  const ssCountEl = vSel.querySelector(`#ss${N}Count`);
+  const ssNextBtnEl = vSel.querySelector(`#ss${N}NextBtn`);
+  vSel.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const stock = chip.dataset.stock;
+      if(chip.classList.contains('selected')){
+        selectedStocksN = selectedStocksN.filter(s=>s!==stock);
+        chip.classList.remove('selected');
+      } else {
+        if(selectedStocksN.length >= MAX_PICK) return;
+        selectedStocksN.push(stock);
+        chip.classList.add('selected');
+      }
+      ssCountEl.textContent = selectedStocksN.length;
+      ssNextBtnEl.disabled = selectedStocksN.length !== MAX_PICK;
+      vSel.querySelectorAll('.chip:not(.selected)').forEach(c=>{
+        c.classList.toggle('disabled', selectedStocksN.length >= MAX_PICK);
+      });
+    });
+  });
+
+  function initSelect(name){
+    vSel.querySelector(`#ss${N}L1`).innerHTML = cfg.headerL1(name, cfg.getBudget());
+    selectedStocksN = [];
+    ssCountEl.textContent = 0;
+    ssNextBtnEl.disabled = true;
+    vSel.querySelectorAll('.chip').forEach(c=> c.classList.remove('selected','disabled'));
+  }
+
+  ssNextBtnEl.addEventListener('click', ()=>{
+    switchView(vSel, vAlloc, ()=> initAlloc());
+  });
+
+  // ---- 이벤트 바인딩: 투자금 배분 ----
+  const allocTotalEl = vAlloc.querySelector(`#alloc${N}Total`);
+  const allocListEl = vAlloc.querySelector(`#allocList${N}`);
+  const allocBalanceEl = vAlloc.querySelector(`#allocBalance${N}`);
+  const allocBalanceWrapEl = vAlloc.querySelector(`#allocBalanceWrap${N}`);
+  const allocWarningEl = vAlloc.querySelector(`#allocWarning${N}`);
+  const allocNextBtnEl = vAlloc.querySelector(`#allocNextBtn${N}`);
+
+  function currentAllocUsedN(){
+    let used = 0;
+    vAlloc.querySelectorAll('.alloc-input').forEach(inp=>{ used += Number(inp.value) || 0; });
+    return used;
+  }
+  function updateAllocBalanceN(budget){
+    const remain = budget - currentAllocUsedN();
+    allocBalanceEl.textContent = remain.toLocaleString('ko-KR');
+    allocBalanceWrapEl.classList.remove('zero','over');
+    if(remain === 0) allocBalanceWrapEl.classList.add('zero');
+    else if(remain < 0) allocBalanceWrapEl.classList.add('over');
+    allocWarningEl.classList.remove('show');
+  }
+  function initAlloc(){
+    const budget = cfg.getBudget();
+    allocTotalEl.textContent = budget.toLocaleString('ko-KR');
+    allocListEl.innerHTML = '';
+    selectedStocksN.forEach((name, i)=>{
+      const row = document.createElement('div');
+      row.className = 'alloc-row';
+      row.innerHTML = `
+        <span><span class="pop">${name}</span> 투자금</span>
+        <span class="alloc-inputwrap">(
+          <input type="number" class="alloc-input" data-idx="${i}" min="0" max="${budget}" step="10" value="0" inputmode="numeric">
+          )<span class="alloc-unit">만원</span>
+        </span>`;
+      allocListEl.appendChild(row);
+    });
+    vAlloc.querySelectorAll('.alloc-input').forEach(inp=>{
+      inp.addEventListener('input', ()=> updateAllocBalanceN(budget));
+    });
+    updateAllocBalanceN(budget);
+  }
+
+  allocNextBtnEl.addEventListener('click', ()=>{
+    const budget = cfg.getBudget();
+    const remain = budget - currentAllocUsedN();
+    if(remain !== 0){
+      allocWarningEl.classList.remove('show');
+      void allocWarningEl.offsetWidth;
+      allocWarningEl.classList.add('show');
+      return;
+    }
+    allocationsN = {};
+    vAlloc.querySelectorAll('.alloc-input').forEach(inp=>{
+      const idx = Number(inp.dataset.idx);
+      allocationsN[selectedStocksN[idx]] = Number(inp.value) || 0;
+    });
+    switchView(vAlloc, vReveal, ()=> initReveal());
+  });
+
+  // ---- 이벤트 바인딩: 리빌 ----
+  const rvNameEl = vReveal.querySelector(`#rv${N}Name`);
+  const rvListEl = vReveal.querySelector(`#rvList${N}`);
+  const rvNextBtnEl = vReveal.querySelector(`#rv${N}NextBtn`);
+
+  function initReveal(){
+    rvNameEl.textContent = currentName;
+    rvNextBtnEl.classList.remove('show');
+    const lines = [
+      ...cfg.macroLines,
+      ...selectedStocksN.map(s => ({ tag:s, text: cfg.db[s] ? cfg.db[s].blurb : '' }))
+    ];
+    runRevealSequence(rvListEl, lines, ()=> rvNextBtnEl.classList.add('show'));
+  }
+
+  rvNextBtnEl.addEventListener('click', ()=>{
+    switchView(vReveal, vResult, ()=> initResultN());
+  });
+
+  // ---- 이벤트 바인딩: 최종 결과 ----
+  const rsReturnEl = vResult.querySelector(`#rs${N}Return`);
+  const rsBalanceEl = vResult.querySelector(`#rs${N}Balance`);
+  const rsCardEl = vResult.querySelector(`#rs${N}Card`);
+  const rsMeValEl = vResult.querySelector(`#rs${N}MeVal`);
+  const rsSpxValEl = vResult.querySelector(`#rs${N}SpxVal`);
+  const rsKospiValEl = vResult.querySelector(`#rs${N}KospiVal`);
+  const rsVerdictEl = vResult.querySelector(`#rs${N}Verdict`);
+  const rsLeaderboardBtnEl = vResult.querySelector(`#rs${N}LeaderboardBtn`);
+
+  function initResultN(){
+    let totalEnd = 0;
+    rsCardEl.innerHTML = '';
+    selectedStocksN.forEach(s=>{
+      const invested = allocationsN[s] || 0;
+      const endKrw = endValueKrw(s, invested, cfg.db, cfg.fxStart, cfg.fxEnd);
+      totalEnd += endKrw;
+      const returnPct = invested>0 ? (endKrw/(invested*10000) - 1)*100 : 0;
+      const row = document.createElement('div');
+      row.className = 'rs-row';
+      row.innerHTML = `
+        <span class="rs-name">${s}</span>
+        <span class="rs-pct ${returnPct>=0?'up':'down'}">${pctLabel(returnPct)}</span>
+        <span class="rs-amt">${Math.round(endKrw/10000).toLocaleString('ko-KR')}만원</span>`;
+      rsCardEl.appendChild(row);
+    });
+
+    const baseKrw = cfg.getBudget() * 10000;
+    const totalReturnPct = baseKrw>0 ? (totalEnd/baseKrw - 1)*100 : 0;
+    rsReturnEl.textContent = pctLabel(totalReturnPct);
+    rsReturnEl.className = 'rs-return ' + (totalReturnPct>=0?'up':'down');
+    rsBalanceEl.innerHTML = `<b>${Math.round(totalEnd/10000).toLocaleString('ko-KR')}만원</b>`;
+
+    const spxPct = (cfg.db['S&P500'].end/cfg.db['S&P500'].start - 1)*100;
+    const kospiPct = (cfg.db['KOSPI200'].end/cfg.db['KOSPI200'].start - 1)*100;
+    rsMeValEl.textContent = pctLabel(totalReturnPct);
+    rsMeValEl.className = 'val ' + (totalReturnPct>=0?'up':'down');
+    rsSpxValEl.textContent = pctLabel(spxPct);
+    rsSpxValEl.className = 'val ' + (spxPct>=0?'up':'down');
+    rsKospiValEl.textContent = pctLabel(kospiPct);
+    rsKospiValEl.className = 'val ' + (kospiPct>=0?'up':'down');
+
+    const bestBenchmark = Math.max(spxPct, kospiPct);
+    const gap = totalReturnPct - bestBenchmark;
+    if(gap >= 0){
+      rsVerdictEl.innerHTML = `시장 평균보다 <span class="pop">${gap.toFixed(1)}%p</span> 더 좋은 성과를 냈어요 👏`;
+    } else {
+      rsVerdictEl.innerHTML = `시장 평균보다 <span class="pop">${Math.abs(gap).toFixed(1)}%p</span> 낮은 성과였어요`;
+    }
+
+    submitResult(currentName, totalReturnPct, N);
+    cfg.setBudget(Math.round(totalEnd/10000));
+  }
+
+  // ---- 이벤트 바인딩: 리더보드 ----
+  const lbCardEl = vLb.querySelector(`#lb${N}Card`);
+  const lbRefreshBtnEl = vLb.querySelector(`#lb${N}RefreshBtn`);
+
+  rsLeaderboardBtnEl.addEventListener('click', ()=>{
+    switchView(vResult, vLb, ()=> fetchLeaderboardForRound(N, lbCardEl));
+  });
+  lbRefreshBtnEl.addEventListener('click', ()=> fetchLeaderboardForRound(N, lbCardEl));
+
+  if(cfg.nextRoundNum){
+    const toNextBtnEl = vLb.querySelector(`#toRound${cfg.nextRoundNum}Btn`);
+    toNextBtnEl.addEventListener('click', ()=>{
+      const next = ROUND_VIEWS[cfg.nextRoundNum];
+      switchView(vLb, next.selectView, ()=> next.initSelect(currentName));
+    });
+  }
+
+  ROUND_VIEWS[N] = { selectView: vSel, initSelect };
+}
+
+createRoundViews({
+  num: 3,
+  db: STOCK_DB_R3, fxStart: FX_START_R3, fxEnd: FX_END_R3,
+  macroLines: MACRO_LINES_R3,
+  getBudget: ()=> round2EndManwon,
+  setBudget: (v)=> { round3EndManwon = v; },
+  headerL1: (name, budget) => `<b>${name}</b>님의 2021년 12월 말 포트폴리오는 <span class="pop">${budget.toLocaleString('ko-KR')}만원</span>이 되었어요`,
+  warnText: '2022년 12월까지 종목을 그대로 들고가요, 리밸런싱은 이번 한 번뿐이에요',
+  revealHeadlineDate: '2022년 12월 31일',
+  revealSub: '2022.01 → 2022.12 · 그 사이 있었던 일들',
+  resultEyebrow: '2022.12.31 기준 · 최종 성과',
+  resultAssume: '2022년 1월 첫 영업일 시가에 매수했다고 가정한 결과예요',
+  lbDateLabel: '2022.12.31',
+  nextRoundNum: 4,
+});
+
+createRoundViews({
+  num: 4,
+  db: STOCK_DB_R4, fxStart: FX_START_R4, fxEnd: FX_END_R4,
+  macroLines: MACRO_LINES_R4,
+  getBudget: ()=> round3EndManwon,
+  setBudget: (v)=> { round4EndManwon = v; },
+  headerL1: (name, budget) => `<b>${name}</b>님의 2022년 12월 말 포트폴리오는 <span class="pop">${budget.toLocaleString('ko-KR')}만원</span>이 되었어요`,
+  warnText: '2024년 12월까지 종목을 그대로 들고가요, 이번이 마지막 라운드예요',
+  revealHeadlineDate: '2024년 12월 31일',
+  revealSub: '2023.01 → 2024.12 · 그 사이 있었던 일들',
+  resultEyebrow: '2024.12.31 기준 · 최종 성과',
+  resultAssume: '2023년 1월 첫 영업일 시가에 매수했다고 가정한 결과예요',
+  lbDateLabel: '2024.12.31',
+  nextRoundNum: null,
+});
+
+toRound3Btn.addEventListener('click', ()=>{
+  const next = ROUND_VIEWS[3];
+  switchView(viewLeaderboard2, next.selectView, ()=> next.initSelect(currentName));
+});
+</script>
+</body>
+</html>
