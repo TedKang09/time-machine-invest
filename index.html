@@ -1377,7 +1377,7 @@ async function fetchLeaderboard(){
       el.className = 'lb-row' + (isMe ? ' me' : '');
       el.innerHTML = `
         <span class="lb-rank ${rankClass}">${i+1}</span>
-        <span class="lb-name">${row.nickname}${isMe ? ' (나)' : ''}</span>
+        <span class="lb-name">${row.nickname}</span>
         <span class="lb-pct ${row.returnPct>=0?'up':'down'}">${row.returnPct>=0?'+':''}${row.returnPct.toFixed(1)}%</span>`;
       lbCard.appendChild(el);
     });
